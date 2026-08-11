@@ -14,19 +14,20 @@ FenixHost 使用 Paymenter 计费系统（Laravel + Livewire）。点击 "Renova
 ### 1. 获取 Cookie
 
 FenixHost 使用三个 Cookie：
-- `paymenter_session`
-- `pterodactyl_session`
-- `XSRF-TOKEN`
+- `paymenter_session` **（必选）**
+- `XSRF-TOKEN` **（必选）**
+- `pterodactyl_session` **（可选，仅游戏面板需要，续期不需要）**
 
 获取方法：
 
 1. 打开 [fenixhost.net](https://fenixhost.net) 并登录
 2. 按 `F12` 打开开发者工具 → **Application** / **存储** 标签
 3. 左侧找到 **Cookies** → `https://fenixhost.net`
-4. 复制这三个 Cookie 的值，用 `;` 连接成一个字符串：
+4. 复制 Cookie 值，用 `;` 连接成一个字符串：
    ```
-   paymenter_session=xxx; pterodactyl_session=yyy; XSRF-TOKEN=zzz
+   paymenter_session=xxx; XSRF-TOKEN=zzz
    ```
+   （如果有 `pterodactyl_session` 也可以加上，续期不需要它但无妨）
 5. 设为环境变量 `FENIX_COOKIE`
 
 ### 2. 获取服务 ID
@@ -91,8 +92,8 @@ export FENIX_PROXY="http://127.0.0.1:7890"
 ```bash
 pip install requests
 
-# 单账号
-export FENIX_COOKIE="paymenter_session=xxx; pterodactyl_session=yyy; XSRF-TOKEN=zzz"
+# 单账号（只需 paymenter_session + XSRF-TOKEN）
+export FENIX_COOKIE="paymenter_session=xxx; XSRF-TOKEN=zzz"
 export FENIX_SERVICE_IDS="522"
 
 # 多账号（可选，加上即启用）

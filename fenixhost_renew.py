@@ -98,8 +98,10 @@ TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN") or ""
 #
 # 去重逻辑: 如果 FENIX_COOKIE 和 FENIX_COOKIE_1 的 Cookie 相同，
 #           只保留 FENIX_COOKIE（账号1），跳过重复的 FENIX_COOKIE_1。
-# Cookie 格式: 三个 Cookie 用分号连接
-#   paymenter_session=xxx; pterodactyl_session=yyy; XSRF-TOKEN=zzz
+# Cookie 格式: 用分号连接，最少需要 paymenter_session + XSRF-TOKEN
+#   paymenter_session=xxx; XSRF-TOKEN=zzz
+#   paymenter_session=xxx; pterodactyl_session=yyy; XSRF-TOKEN=zzz（完整）
+# 注意: pterodactyl_session 是游戏面板（Pterodactyl）的 Cookie，续期不需要它
 # ============================================================
 ACCOUNTS = []
 _seen_cookies = set()  # 用于去重

@@ -53,8 +53,19 @@ def _detect_local_proxy() -> dict:
 
 
 if FENIX_PROXY:
-    PROXIES = {"http": FENIX_PROXY, "https": FENIX_PROXY}
-    print(f"  🔗 使用 FENIX_PROXY: {FENIX_PROXY}")
+    # 先测试代理是否可达，不可达则回退直连
+    try:
+        test = requests.get("http://127.0.0.1:1081", timeout=2)
+        proxies = {"http": FENIX_PROXY, "https": FENIX_PROXY}
+        test2 = requests.get("https://api.ipify.org", proxies=proxies, timeout=8)
+        if test2.status_code == 200:
+            PROXIES = proxies
+            print(f"  🔗 使用 FENIX_PROXY: {FENIX_PROXY}")
+        else:
+            raise Exception("proxy unreachable")
+    except Exception:
+        print(f"  ⚠️  FENIX_PROXY={FENIX_PROXY} 不可达，回退直连")
+        PROXIES = {}
 elif NODE_LINK:
     print("  🔗 检测到 NODE_LINK，尝试自动检测本地代理...")
     PROXIES = _detect_local_proxy()

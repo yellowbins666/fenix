@@ -90,43 +90,61 @@ TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN") or ""
 
 # ============================================================
 # 多账号检测
-# 账号1: FENIX_COOKIE_1 + FENIX_SERVICE_IDS_1
-# 账号2: FENIX_COOKIE_2 + FENIX_SERVICE_IDS_2
-# ...
-# 向下兼容: FENIX_COOKIE + FENIX_SERVICE_IDS（单账号）
+# 账号规则:
+#   FENIX_COOKIE + FENIX_SERVICE_IDS            → 账号1（无后缀，始终生效）
+#   FENIX_COOKIE_1 + FENIX_SERVICE_IDS_1        → 同一账号的另一组（自动去重）
+#   FENIX_COOKIE_2 + FENIX_SERVICE_IDS_2        → 账号2
+#   FENIX_COOKIE_3 + FENIX_SERVICE_IDS_3        → 账号3（依此类推）
+#
+# 去重逻辑: 如果 FENIX_COOKIE 和 FENIX_COOKIE_1 的 Cookie 相同，
+#           只保留 FENIX_COOKIE（账号1），跳过重复的 FENIX_COOKIE_1。
 # Cookie 格式: 三个 Cookie 用分号连接
 #   paymenter_session=xxx; pterodactyl_session=yyy; XSRF-TOKEN=zzz
 # ============================================================
 ACCOUNTS = []
+_seen_cookies = set()  # 用于去重
 
-for i in range(1, 100):
-    cookie = os.environ.get(f"FENIX_COOKIE_{i}")
-    if cookie:
-        service_ids_raw = os.environ.get(f"FENIX_SERVICE_IDS_{i}") or ""
-        service_ids = [s.strip() for s in service_ids_raw.split(",") if s.strip()]
-        if not service_ids:
-            print(f"⚠️ 账号{i} FENIX_SERVICE_IDS_{i} 为空，跳过")
-            continue
-        ACCOUNTS.append({
-            "cookie": cookie,
-            "service_ids": service_ids,
-            "label": f"账号{i}"
-        })
-    else:
-        break
 
-# 向下兼容：单账号
-if not ACCOUNTS:
-    legacy_cookie = os.environ.get("FENIX_COOKIE") or ""
-    if legacy_cookie:
-        service_ids_raw = os.environ.get("FENIX_SERVICE_IDS") or ""
-        service_ids = [s.strip() for s in service_ids_raw.split(",") if s.strip()]
-        if service_ids:
-            ACCOUNTS.append({
-                "cookie": legacy_cookie,
-                "service_ids": service_ids,
-                "label": "默认账号"
-            })
+def _add_account(cookie: str, service_ids_raw: str, label: str, sid_label: str):
+    """添加一个账号，自动去重（相同 cookie 不重复添加）"""
+    if not cookie:
+        return False
+    # 去重
+    if cookie in _seen_cookies:
+        print(f"  ⚠️ 发现重复账号（{label} 与已有账号 cookie 相同），跳过")
+        return False
+    service_ids = [s.strip() for s in service_ids_raw.split(",") if s.strip()]
+    if not service_ids:
+        print(f"  ⚠️ {sid_label} 未配置服务 ID，跳过")
+        return False
+    _seen_cookies.add(cookie)
+    ACCOUNTS.append({
+        "cookie": cookie,
+        "service_ids": service_ids,
+        "label": label,
+    })
+    return True
+
+
+# 账号1: FENIX_COOKIE（无后缀，始终生效）
+_add_account(
+    os.environ.get("FENIX_COOKIE") or "",
+    os.environ.get("FENIX_SERVICE_IDS") or "",
+    "账号1",
+    "FENIX_SERVICE_IDS",
+)
+
+# 账号1~N: FENIX_COOKIE_1..N（扫描所有编号，不因中间缺失而中断）
+for _n in range(1, 100):
+    cookie = os.environ.get(f"FENIX_COOKIE_{_n}")
+    if not cookie:
+        continue  # 跳过空位，继续扫描下一个编号
+    _add_account(
+        cookie,
+        os.environ.get(f"FENIX_SERVICE_IDS_{_n}") or "",
+        f"账号{_n}",
+        f"FENIX_SERVICE_IDS_{_n}",
+    )
 
 if not ACCOUNTS:
     print("❌ 未配置任何 Cookie，脚本终止。")

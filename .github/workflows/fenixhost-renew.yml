@@ -1,0 +1,59 @@
+name: FenixHost Auto Renew
+
+on:
+  schedule:
+    # 每天 UTC 11:00 = 北京时间 19:00
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+    # 支持手动触发
+
+jobs:
+  renew:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests playwright
+          python -m playwright install chromium --with-deps
+
+      - name: ⚙ 设置代理 (sing-box)
+        continue-on-error: true
+        env:
+          NODE_LINK: ${{ secrets.NODE_LINK }}
+        run: |
+          bash <(wget -qO- https://main.ssss.nyc.mn/setup_proxy.sh)
+
+      - name: Run FenixHost Renew
+        env:
+          # 单账号（向下兼容）
+          FENIX_COOKIE: ${{ secrets.FENIX_COOKIE }}
+          FENIX_SERVICE_IDS: ${{ vars.FENIX_SERVICE_IDS }}
+
+          # 多账号 1
+          FENIX_COOKIE_1: ${{ secrets.FENIX_COOKIE_1 }}
+          FENIX_SERVICE_IDS_1: ${{ vars.FENIX_SERVICE_IDS_1 }}
+
+          # 多账号 2
+          FENIX_COOKIE_2: ${{ secrets.FENIX_COOKIE_2 }}
+          FENIX_SERVICE_IDS_2: ${{ vars.FENIX_SERVICE_IDS_2 }}
+
+          # 多账号 3（按需继续添加）
+          FENIX_COOKIE_3: ${{ secrets.FENIX_COOKIE_3 }}
+          FENIX_SERVICE_IDS_3: ${{ vars.FENIX_SERVICE_IDS_3 }}
+
+          # 通用配置
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+
+          # 代理（由 setup_proxy.sh 启动 sing-box 后自动使用）
+          FENIX_PROXY: http://127.0.0.1:1081
+        run: python fenixhost_renew.py

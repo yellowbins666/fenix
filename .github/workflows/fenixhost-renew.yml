@@ -1,8 +1,9 @@
 name: FenixHost Auto Renew
 
 on:
-  workflow_dispatch:
-    # 支持手动触发
+  workflow_dispatch:          # 保留手动触发
+  schedule:
+    - cron: '0 11 */5 * *'    
 
 jobs:
   renew:

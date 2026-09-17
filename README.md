@@ -131,6 +131,15 @@ python fenixhost_renew.py
 4. 每天 UTC 11:00（北京时间 19:00）自动运行
 5. 也可在 Actions → **FenixHost Auto Renew** → **Run workflow** 手动触发
 
+## 运行记录自动清理
+
+每次运行结束时会执行 `cleanup-runs` job：调用 GitHub API 把本工作流的**历史运行记录全部删除，只保留最新一份**（当前这次），Actions 页面不再堆积历史。
+
+- 只删除状态为 `completed` 的记录，正在进行中的运行不受影响
+- 清理失败不影响续期结果（该 job 标记为 `continue-on-error`）
+- 默认额外保留 `0` 条；如需再留几条历史，添加 Variable `KEEP_RUNS`（如 `1` 表示保留最近 1 条已完成记录 + 当前运行）
+- 依赖 `permissions: actions: write`（已写入 workflow）。若仓库把 `GITHUB_TOKEN` 设为只读，需到 Settings → Actions → General → Workflow permissions 改为 **Read and write**
+
 ## 效果
 
 运行成功后，Telegram 会收到通知：

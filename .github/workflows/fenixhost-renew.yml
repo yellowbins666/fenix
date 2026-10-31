@@ -37,20 +37,28 @@ jobs:
 
       - name: Run FenixHost Renew
         env:
-          # 单账号（向下兼容）
-          FENIX_COOKIE: ${{ secrets.FENIX_COOKIE }}
+          # 单账号：Cookie 三件套（每个 Secret 只存一个 Cookie 的值）
+          XSRF_TOKEN: ${{ secrets.XSRF_TOKEN }}
+          PTERODACTYL_SESSION: ${{ secrets.PTERODACTYL_SESSION }}
+          REMEMBER_WEB: ${{ secrets.REMEMBER_WEB }}
           FENIX_SERVICE_IDS: ${{ vars.FENIX_SERVICE_IDS }}
 
           # 多账号 1
-          FENIX_COOKIE_1: ${{ secrets.FENIX_COOKIE_1 }}
+          XSRF_TOKEN_1: ${{ secrets.XSRF_TOKEN_1 }}
+          PTERODACTYL_SESSION_1: ${{ secrets.PTERODACTYL_SESSION_1 }}
+          REMEMBER_WEB_1: ${{ secrets.REMEMBER_WEB_1 }}
           FENIX_SERVICE_IDS_1: ${{ vars.FENIX_SERVICE_IDS_1 }}
 
           # 多账号 2
-          FENIX_COOKIE_2: ${{ secrets.FENIX_COOKIE_2 }}
+          XSRF_TOKEN_2: ${{ secrets.XSRF_TOKEN_2 }}
+          PTERODACTYL_SESSION_2: ${{ secrets.PTERODACTYL_SESSION_2 }}
+          REMEMBER_WEB_2: ${{ secrets.REMEMBER_WEB_2 }}
           FENIX_SERVICE_IDS_2: ${{ vars.FENIX_SERVICE_IDS_2 }}
 
           # 多账号 3（按需继续添加）
-          FENIX_COOKIE_3: ${{ secrets.FENIX_COOKIE_3 }}
+          XSRF_TOKEN_3: ${{ secrets.XSRF_TOKEN_3 }}
+          PTERODACTYL_SESSION_3: ${{ secrets.PTERODACTYL_SESSION_3 }}
+          REMEMBER_WEB_3: ${{ secrets.REMEMBER_WEB_3 }}
           FENIX_SERVICE_IDS_3: ${{ vars.FENIX_SERVICE_IDS_3 }}
 
           # 通用配置

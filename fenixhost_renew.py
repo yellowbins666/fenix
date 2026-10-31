@@ -19,6 +19,8 @@ from urllib.parse import unquote
 # 📌 配置区域
 # ============================================================
 BASE_URL = "https://fenixhost.net"
+# Livewire 更新端点：旧版面板是 /paymenter/update，新版多为 /livewire/update；
+# 脚本会从页面 HTML 自动识别，识别不到时才用这个默认值
 UPDATE_URL = f"{BASE_URL}/paymenter/update"
 
 # ============================================================
@@ -326,22 +328,46 @@ def extract_csrf_token(html: str) -> str:
     return ""
 
 
-def extract_livewire_snapshot(html: str) -> dict:
-    """
-    从页面 HTML 中提取 services.show 组件的 Livewire snapshot。
-
-    在 Livewire 3 + Paymenter 中，组件 root 元素带 wire:snapshot 属性，
-    其中 memo.name 为 services.show 的那个就是续期组件。
-    """
+def extract_all_snapshots(html: str) -> list:
+    """提取页面全部 Livewire snapshot，返回 [(memo_name, snapshot_dict), ...]"""
+    found = []
     for m in re.finditer(r'wire:snapshot=["\']([^"\']+)["\']', html, re.IGNORECASE):
         snap_str = _unescape_html(m.group(1))
         try:
             data = json.loads(snap_str)
         except json.JSONDecodeError:
             continue
-        if data.get("memo", {}).get("name") == "services.show":
-            return data
-    return None
+        found.append((data.get("memo", {}).get("name", ""), data))
+    return found
+
+
+def pick_renew_snapshot(html: str):
+    """
+    从页面 HTML 中挑出续期组件的 Livewire snapshot。
+
+    在 Livewire 3 + Paymenter 中，组件 root 元素带 wire:snapshot 属性。
+    优先 memo.name == services.show（旧版面板），其次名字带 renew 的，
+    再次名字带 service / server 的（新版面板改名时的兜底）。
+
+    返回 (snapshot, 组件名)；找不到返回 (None, 页面上发现的组件名列表)。
+    """
+    all_snaps = extract_all_snapshots(html)
+    for name, data in all_snaps:
+        if name == "services.show":
+            return data, name
+    for key in ("renew", "service", "server"):
+        for name, data in all_snaps:
+            if key in name.lower():
+                return data, name
+    return None, [n for n, _ in all_snaps]
+
+
+def detect_update_url(html: str) -> str:
+    """从页面 HTML 里识别 Livewire 更新端点，识别不到就用默认 UPDATE_URL"""
+    for cand in ("/livewire/update", "/paymenter/update"):
+        if cand in html:
+            return f"{BASE_URL}{cand}"
+    return UPDATE_URL
 
 
 def extract_expiry(html: str) -> str:
@@ -358,6 +384,11 @@ def extract_expiry(html: str) -> str:
             return dt.strftime("%Y-%m-%d %H:%M:%S")
         except (ValueError, OSError):
             return m.group(1)
+
+    # 新版面板: RENEWAL 倒计时 "6d 1h 33m 21s"
+    m = re.search(r'(\d+d\s+\d+h\s+\d+m\s+\d+s)', html)
+    if m:
+        return m.group(1)
 
     # 兜底：查找 "Expires at: Month DD, YYYY"
     m = re.search(r'Expires at:\s*([A-Za-z]{3}\s+\d{1,2},\s*\d{4})', html)
@@ -386,33 +417,55 @@ def renew_service(cookie: str, service_id: str) -> dict:
     Returns:
         包含续期结果的字典
     """
-    service_url = f"{BASE_URL}/services/{service_id}"
     cookies_dict = parse_cookies(cookie)
 
     session = requests.Session()
     session.cookies.update(cookies_dict)
 
-    print(f"  🔄 获取服务页面 {service_id}...")
+    # 第一步：GET 服务页面（新版面板是 /dashboard/servers/<id>，旧版是 /services/<id>，两个都试）
+    service_urls = [
+        f"{BASE_URL}/dashboard/servers/{service_id}",
+        f"{BASE_URL}/services/{service_id}",
+    ]
+    resp = None
+    service_url = service_urls[0]
+    snapshot = None
+    snap_name = ""
+    update_url = UPDATE_URL
+    found_names = []
+    for url in service_urls:
+        print(f"  🔄 获取服务页面 {service_id}（{url}）...")
+        try:
+            r = session.get(url, headers=get_browser_headers(),
+                            timeout=30, proxies=PROXIES or None, allow_redirects=True)
+        except Exception as e:
+            print(f"  ❌ 获取服务页面失败: {e}")
+            return {"status": "error", "message": f"页面请求失败: {e}"}
 
-    # 第一步：GET 服务页面
-    try:
-        resp = session.get(service_url, headers=get_browser_headers(),
-                           timeout=30, proxies=PROXIES or None, allow_redirects=True)
-    except Exception as e:
-        print(f"  ❌ 获取服务页面失败: {e}")
-        return {"status": "error", "message": f"页面请求失败: {e}"}
+        # 检查是否被重定向到登录页（Cookie 过期）
+        if "login" in r.url.lower() and ("Sign in" in r.text or "sign in" in r.text.lower()):
+            print(f"  ❌ 被重定向到登录页，Cookie 已过期")
+            return {"status": "error", "message": "Cookie 已过期"}
 
-    # 检查是否被重定向到登录页（Cookie 过期）
-    if "login" in resp.url.lower() and ("Sign in" in resp.text or "sign in" in resp.text.lower()):
-        print(f"  ❌ 被重定向到登录页，Cookie 已过期")
-        return {"status": "error", "message": "Cookie 已过期"}
+        if r.status_code == 403:
+            print(f"  ❌ 403 Forbidden - Cookie 可能已过期，或服务ID不存在")
+            return {"status": "error", "message": "403 Forbidden"}
+        if r.status_code != 200:
+            print(f"  ❌ HTTP {r.status_code}: 获取服务页面失败")
+            continue
 
-    if resp.status_code == 403:
-        print(f"  ❌ 403 Forbidden - Cookie 可能已过期，或服务ID不存在")
-        return {"status": "error", "message": "403 Forbidden"}
-    if resp.status_code != 200:
-        print(f"  ❌ HTTP {resp.status_code}: 获取服务页面失败")
-        return {"status": "error", "message": f"HTTP {resp.status_code}"}
+        resp = r
+        service_url = url
+        snapshot, picked = pick_renew_snapshot(r.text)
+        if snapshot:
+            snap_name = picked
+            update_url = detect_update_url(r.text)
+            break
+        found_names = picked
+        print(f"  ⚠️ 这个页面没有续期组件（发现组件: {found_names or '无'}），换下一个地址...")
+
+    if resp is None:
+        return {"status": "error", "message": "页面请求失败"}
 
     # 提取 CSRF token
     csrf_token = extract_csrf_token(resp.text)
@@ -420,13 +473,11 @@ def renew_service(cookie: str, service_id: str) -> dict:
         print(f"  ❌ 未找到 CSRF token")
         return {"status": "error", "message": "未找到 CSRF token"}
 
-    # 提取 Livewire snapshot
-    snapshot = extract_livewire_snapshot(resp.text)
     if not snapshot:
-        print(f"  ❌ 未找到 services.show Livewire snapshot")
-        return {"status": "error", "message": "未找到续期组件"}
+        print(f"  ❌ 未找到续期组件，页面组件列表: {found_names}")
+        return {"status": "error", "message": f"未找到续期组件（组件: {found_names}）"}
 
-    print(f"  ✅ 已获取 CSRF token 和续期组件")
+    print(f"  ✅ 已获取 CSRF token 和续期组件（{snap_name}，端点 {update_url}）")
 
     # 记录续期前的到期时间
     old_expiry = extract_expiry(resp.text)
@@ -447,7 +498,7 @@ def renew_service(cookie: str, service_id: str) -> dict:
 
     print(f"  🔄 调用 renewFree...")
     try:
-        lw_resp = session.post(UPDATE_URL, headers=get_livewire_headers(service_url),
+        lw_resp = session.post(update_url, headers=get_livewire_headers(service_url),
                                json=payload, timeout=30, proxies=PROXIES or None)
     except Exception as e:
         print(f"  ❌ Livewire 请求失败: {e}")

@@ -41,24 +41,33 @@ jobs:
           XSRF_TOKEN: ${{ secrets.XSRF_TOKEN }}
           PTERODACTYL_SESSION: ${{ secrets.PTERODACTYL_SESSION }}
           REMEMBER_WEB: ${{ secrets.REMEMBER_WEB }}
+          # 可选：新版面板的会话 Cookie 与设备 Cookie（只带三件套会拿到登录页）
+          HOST_SESSION: ${{ secrets.HOST_SESSION }}
+          FH_DEVICE: ${{ secrets.FH_DEVICE }}
           FENIX_SERVICE_IDS: ${{ vars.FENIX_SERVICE_IDS }}
 
           # 多账号 1
           XSRF_TOKEN_1: ${{ secrets.XSRF_TOKEN_1 }}
           PTERODACTYL_SESSION_1: ${{ secrets.PTERODACTYL_SESSION_1 }}
           REMEMBER_WEB_1: ${{ secrets.REMEMBER_WEB_1 }}
+          HOST_SESSION_1: ${{ secrets.HOST_SESSION_1 }}
+          FH_DEVICE_1: ${{ secrets.FH_DEVICE_1 }}
           FENIX_SERVICE_IDS_1: ${{ vars.FENIX_SERVICE_IDS_1 }}
 
           # 多账号 2
           XSRF_TOKEN_2: ${{ secrets.XSRF_TOKEN_2 }}
           PTERODACTYL_SESSION_2: ${{ secrets.PTERODACTYL_SESSION_2 }}
           REMEMBER_WEB_2: ${{ secrets.REMEMBER_WEB_2 }}
+          HOST_SESSION_2: ${{ secrets.HOST_SESSION_2 }}
+          FH_DEVICE_2: ${{ secrets.FH_DEVICE_2 }}
           FENIX_SERVICE_IDS_2: ${{ vars.FENIX_SERVICE_IDS_2 }}
 
           # 多账号 3（按需继续添加）
           XSRF_TOKEN_3: ${{ secrets.XSRF_TOKEN_3 }}
           PTERODACTYL_SESSION_3: ${{ secrets.PTERODACTYL_SESSION_3 }}
           REMEMBER_WEB_3: ${{ secrets.REMEMBER_WEB_3 }}
+          HOST_SESSION_3: ${{ secrets.HOST_SESSION_3 }}
+          FH_DEVICE_3: ${{ secrets.FH_DEVICE_3 }}
           FENIX_SERVICE_IDS_3: ${{ vars.FENIX_SERVICE_IDS_3 }}
 
           # 通用配置

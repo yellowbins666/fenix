@@ -92,51 +92,52 @@ TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN") or ""
 
 # ============================================================
 # 多账号检测
-# Cookie 只由三个变量组成（每个变量存一个 Cookie 的值）:
-#   XSRF_TOKEN          → Cookie: XSRF-TOKEN
-#   PTERODACTYL_SESSION → Cookie: pterodactyl_session
-#   REMEMBER_WEB        → Cookie: remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d
-# 脚本把三者拼成一个 Cookie 字符串，其余 Cookie 一律不带。
+# 变量与 Cookie 的对应关系（每个变量只存一个 Cookie 的值）:
+#   必填三件套:
+#     XSRF_TOKEN          → Cookie: XSRF-TOKEN
+#     PTERODACTYL_SESSION → Cookie: pterodactyl_session
+#     REMEMBER_WEB        → Cookie: remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d
+#   可选（填了才带，不填不带）:
+#     HOST_SESSION        → Cookie: __Host-fenixhost_session（新版面板的会话 Cookie）
+#     FH_DEVICE           → Cookie: fh_device（设备指纹 Cookie，面板可能校验）
+# 脚本把已填的变量拼成一个 Cookie 字符串，没填的可选项一律不带。
 #
 # 账号规则:
-#   XSRF_TOKEN + PTERODACTYL_SESSION + REMEMBER_WEB + FENIX_SERVICE_IDS
-#       → 默认账号（无后缀，始终生效）
-#   三件套加后缀 _1 / _2 / _3 ... + FENIX_SERVICE_IDS_N → 更多账号（依此类推）
+#   三件套 + FENIX_SERVICE_IDS                  → 默认账号（无后缀，始终生效）
+#   三件套加后缀 _1 / _2 / _3 ... + FENIX_SERVICE_IDS_N → 更多账号（依此类推，
+#   可选变量同样加后缀，如 HOST_SESSION_1）
 #
 # 去重逻辑: 拼出的 Cookie 字符串相同的账号，只保留先出现的一个。
 # ============================================================
 REMEMBER_WEB_NAME = "remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d"
+SESSION_COOKIE_NAME = "__Host-fenixhost_session"  # 按面板截图 __Host-fenixhos… 的全名
+
+COOKIE_VARS = [
+    # (环境变量名, Cookie 名, 是否必填)
+    ("XSRF_TOKEN", "XSRF-TOKEN", True),
+    ("PTERODACTYL_SESSION", "pterodactyl_session", True),
+    ("REMEMBER_WEB", REMEMBER_WEB_NAME, True),
+    ("HOST_SESSION", SESSION_COOKIE_NAME, False),
+    ("FH_DEVICE", "fh_device", False),
+]
 
 ACCOUNTS = []
 _seen_cookies = set()  # 用于去重
 
 
-def _build_cookie(xsrf: str, ptero: str, remember: str) -> str:
-    """把三个变量拼成 Cookie 字符串（只有这三个 Cookie）"""
-    return "; ".join([
-        f"XSRF-TOKEN={xsrf}",
-        f"pterodactyl_session={ptero}",
-        f"{REMEMBER_WEB_NAME}={remember}",
-    ])
-
-
 def _add_account(suffix: str, label: str):
-    """按后缀读取三件套变量并添加账号，自动去重（相同 cookie 不重复添加）"""
+    """按后缀读取 Cookie 变量并添加账号，自动去重（相同 cookie 不重复添加）"""
     tag = f"_{suffix}" if suffix else ""
-    xsrf = os.environ.get(f"XSRF_TOKEN{tag}") or ""
-    ptero = os.environ.get(f"PTERODACTYL_SESSION{tag}") or ""
-    remember = os.environ.get(f"REMEMBER_WEB{tag}") or ""
-    if not (xsrf or ptero or remember):
+    values = {env: os.environ.get(f"{env}{tag}") or "" for env, _, _ in COOKIE_VARS}
+    if not any(values.values()):
         return False  # 这一组完全没配置，跳过
-    missing = [name for name, val in (
-        (f"XSRF_TOKEN{tag}", xsrf),
-        (f"PTERODACTYL_SESSION{tag}", ptero),
-        (f"REMEMBER_WEB{tag}", remember),
-    ) if not val]
+    missing = [f"{env}{tag}" for env, _, req in COOKIE_VARS if req and not values[env]]
     if missing:
         print(f"  ⚠️ {label} 缺少变量: {', '.join(missing)}，跳过")
         return False
-    cookie = _build_cookie(xsrf, ptero, remember)
+    cookie = "; ".join(
+        f"{cname}={values[env]}" for env, cname, _ in COOKIE_VARS if values[env]
+    )
     if cookie in _seen_cookies:
         print(f"  ⚠️ 发现重复账号（{label} 与已有账号 cookie 相同），跳过")
         return False
@@ -457,6 +458,9 @@ def renew_service(cookie: str, service_id: str) -> dict:
         resp = r
         service_url = url
         snapshot, picked = pick_renew_snapshot(r.text)
+        if not snapshot and picked and all(n.startswith("auth.") for n in picked):
+            print(f"  ❌ 拿到的是登录页（组件 {picked}），Cookie 没登录上——多半缺会话 Cookie（HOST_SESSION）")
+            return {"status": "error", "message": "Cookie 未登录（拿到登录页）"}
         if snapshot:
             snap_name = picked
             update_url = detect_update_url(r.text)

@@ -90,32 +90,56 @@ TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN") or ""
 
 # ============================================================
 # 多账号检测
-# 账号规则:
-#   FENIX_COOKIE + FENIX_SERVICE_IDS            → 账号1（无后缀，始终生效）
-#   FENIX_COOKIE_1 + FENIX_SERVICE_IDS_1        → 同一账号的另一组（自动去重）
-#   FENIX_COOKIE_2 + FENIX_SERVICE_IDS_2        → 账号2
-#   FENIX_COOKIE_3 + FENIX_SERVICE_IDS_3        → 账号3（依此类推）
+# Cookie 只由三个变量组成（每个变量存一个 Cookie 的值）:
+#   XSRF_TOKEN          → Cookie: XSRF-TOKEN
+#   PTERODACTYL_SESSION → Cookie: pterodactyl_session
+#   REMEMBER_WEB        → Cookie: remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d
+# 脚本把三者拼成一个 Cookie 字符串，其余 Cookie 一律不带。
 #
-# 去重逻辑: 如果 FENIX_COOKIE 和 FENIX_COOKIE_1 的 Cookie 相同，
-#           只保留 FENIX_COOKIE（账号1），跳过重复的 FENIX_COOKIE_1。
-# Cookie 格式: 用分号连接，最少需要 paymenter_session + XSRF-TOKEN
-#   paymenter_session=xxx; XSRF-TOKEN=zzz
-#   paymenter_session=xxx; pterodactyl_session=yyy; XSRF-TOKEN=zzz（完整）
-# 注意: pterodactyl_session 是游戏面板（Pterodactyl）的 Cookie，续期不需要它
+# 账号规则:
+#   XSRF_TOKEN + PTERODACTYL_SESSION + REMEMBER_WEB + FENIX_SERVICE_IDS
+#       → 默认账号（无后缀，始终生效）
+#   三件套加后缀 _1 / _2 / _3 ... + FENIX_SERVICE_IDS_N → 更多账号（依此类推）
+#
+# 去重逻辑: 拼出的 Cookie 字符串相同的账号，只保留先出现的一个。
 # ============================================================
+REMEMBER_WEB_NAME = "remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d"
+
 ACCOUNTS = []
 _seen_cookies = set()  # 用于去重
 
 
-def _add_account(cookie: str, service_ids_raw: str, label: str, sid_label: str):
-    """添加一个账号，自动去重（相同 cookie 不重复添加）"""
-    if not cookie:
+def _build_cookie(xsrf: str, ptero: str, remember: str) -> str:
+    """把三个变量拼成 Cookie 字符串（只有这三个 Cookie）"""
+    return "; ".join([
+        f"XSRF-TOKEN={xsrf}",
+        f"pterodactyl_session={ptero}",
+        f"{REMEMBER_WEB_NAME}={remember}",
+    ])
+
+
+def _add_account(suffix: str, label: str):
+    """按后缀读取三件套变量并添加账号，自动去重（相同 cookie 不重复添加）"""
+    tag = f"_{suffix}" if suffix else ""
+    xsrf = os.environ.get(f"XSRF_TOKEN{tag}") or ""
+    ptero = os.environ.get(f"PTERODACTYL_SESSION{tag}") or ""
+    remember = os.environ.get(f"REMEMBER_WEB{tag}") or ""
+    if not (xsrf or ptero or remember):
+        return False  # 这一组完全没配置，跳过
+    missing = [name for name, val in (
+        (f"XSRF_TOKEN{tag}", xsrf),
+        (f"PTERODACTYL_SESSION{tag}", ptero),
+        (f"REMEMBER_WEB{tag}", remember),
+    ) if not val]
+    if missing:
+        print(f"  ⚠️ {label} 缺少变量: {', '.join(missing)}，跳过")
         return False
-    # 去重
+    cookie = _build_cookie(xsrf, ptero, remember)
     if cookie in _seen_cookies:
         print(f"  ⚠️ 发现重复账号（{label} 与已有账号 cookie 相同），跳过")
         return False
-    service_ids = [s.strip() for s in service_ids_raw.split(",") if s.strip()]
+    sid_label = f"FENIX_SERVICE_IDS{tag}"
+    service_ids = [s.strip() for s in (os.environ.get(sid_label) or "").split(",") if s.strip()]
     if not service_ids:
         print(f"  ⚠️ {sid_label} 未配置服务 ID，跳过")
         return False
@@ -128,31 +152,18 @@ def _add_account(cookie: str, service_ids_raw: str, label: str, sid_label: str):
     return True
 
 
-# 账号1: FENIX_COOKIE（无后缀，始终生效）
-_add_account(
-    os.environ.get("FENIX_COOKIE") or "",
-    os.environ.get("FENIX_SERVICE_IDS") or "",
-    "账号1",
-    "FENIX_SERVICE_IDS",
-)
+# 默认账号: 无后缀（始终生效）
+_add_account("", "账号1")
 
-# 账号1~N: FENIX_COOKIE_1..N（扫描所有编号，不因中间缺失而中断）
+# 更多账号: 后缀 _1.._99（扫描所有编号，不因中间缺失而中断）
 for _n in range(1, 100):
-    cookie = os.environ.get(f"FENIX_COOKIE_{_n}")
-    if not cookie:
-        continue  # 跳过空位，继续扫描下一个编号
-    _add_account(
-        cookie,
-        os.environ.get(f"FENIX_SERVICE_IDS_{_n}") or "",
-        f"账号{_n}",
-        f"FENIX_SERVICE_IDS_{_n}",
-    )
+    _add_account(str(_n), f"账号{_n}")
 
 if not ACCOUNTS:
     print("❌ 未配置任何 Cookie，脚本终止。")
-    print("   单账号: 设置 FENIX_COOKIE + FENIX_SERVICE_IDS")
-    print("   多账号: 设置 FENIX_COOKIE_1 + FENIX_SERVICE_IDS_1,")
-    print("            FENIX_COOKIE_2 + FENIX_SERVICE_IDS_2, ...")
+    print("   单账号: 设置 XSRF_TOKEN + PTERODACTYL_SESSION + REMEMBER_WEB + FENIX_SERVICE_IDS")
+    print("   多账号: 三件套加后缀，如 XSRF_TOKEN_1 + PTERODACTYL_SESSION_1")
+    print("            + REMEMBER_WEB_1 + FENIX_SERVICE_IDS_1（_2、_3 依此类推）")
     sys.exit(1)
 
 print(f"📋 检测到 {len(ACCOUNTS)} 个账号")
@@ -369,7 +380,7 @@ def renew_service(cookie: str, service_id: str) -> dict:
     通过 Paymenter/Livewire 续期服务器
 
     Args:
-        cookie: Cookie 字符串（paymenter_session; pterodactyl_session; XSRF-TOKEN）
+        cookie: Cookie 字符串（XSRF-TOKEN; pterodactyl_session; remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d）
         service_id: 服务 ID（如 522）
 
     Returns:

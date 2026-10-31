@@ -3,7 +3,7 @@ name: FenixHost Auto Renew
 on:
   workflow_dispatch:          # 保留手动触发
   schedule:
-    - cron: '0 11 */5 * *'    
+    - cron: '0 11 */4 * *'    
 
 # actions: write 用于运行结束后清理历史运行记录；contents: read 供 checkout 使用
 permissions:

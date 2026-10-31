@@ -369,7 +369,7 @@ def renew_service(cookie: str, service_id: str) -> dict:
     通过 Paymenter/Livewire 续期服务器
 
     Args:
-        cookie: Cookie 字符串（remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d; pterodactyl_session; XSRF-TOKEN）
+        cookie: Cookie 字符串（paymenter_session; pterodactyl_session; XSRF-TOKEN）
         service_id: 服务 ID（如 522）
 
     Returns:
